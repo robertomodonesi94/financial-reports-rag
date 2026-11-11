@@ -1,0 +1,15 @@
+# data and models: never commit downloaded papers, indexes or weights
+data/
+*.pdf
+*.npy
+*.safetensors
+*.bin
+
+# python
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# notebooks
+.ipynb_checkpoints/

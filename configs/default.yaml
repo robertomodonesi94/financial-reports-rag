@@ -1,0 +1,17 @@
+# Default configuration: free Colab T4, 7B model in 4 bit.
+data_dir: data
+max_docs: 0                                        # 0 = all reports used by the FinanceBench questions (~84 PDFs)
+
+chunk_words: 220
+overlap_words: 40
+
+embedder: sentence-transformers/all-MiniLM-L6-v2   # "hashing" = no download, lexical baseline
+top_k: 5
+hybrid: true
+
+llm_backend: hf                                    # hf | openai_compat | fake
+llm_model: mistralai/Mistral-7B-Instruct-v0.3      # or Qwen/Qwen2.5-7B-Instruct (check the licence)
+max_new_tokens: 400
+temperature: 0.0
+
+agent_max_steps: 5

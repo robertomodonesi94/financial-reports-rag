@@ -1,0 +1,12 @@
+# Configuration for the API image: no GPU, the LLM runs in a separate OpenAI-compatible server.
+data_dir: data
+embedder: hashing            # must match the embedder used to build data/index
+top_k: 5
+hybrid: true
+
+llm_backend: openai_compat
+llm_base_url: http://host.docker.internal:8000/v1
+llm_model: mistralai/Mistral-7B-Instruct-v0.3
+max_new_tokens: 400
+temperature: 0.0
+agent_max_steps: 5

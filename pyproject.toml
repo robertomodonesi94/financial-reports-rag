@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finrag"
+version = "0.1.0"
+description = "RAG assistant and tool-using agent over company financial reports, evaluated on the open FinanceBench sample."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24", "pyyaml>=6.0", "requests>=2.31", "pymupdf>=1.24"]
+
+[project.optional-dependencies]
+ml = ["sentence-transformers>=2.7", "transformers>=4.41", "accelerate>=0.30", "bitsandbytes>=0.43", "torch"]
+api = ["fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2.5"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
