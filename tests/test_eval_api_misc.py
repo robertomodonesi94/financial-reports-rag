@@ -1,4 +1,7 @@
+import contextlib
 import json
+
+import numpy as np
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +13,7 @@ from finrag.eval.dataset import load_dataset, sample, save_jsonl, validate
 from finrag.eval.generate import propose_questions
 from finrag.eval.metrics import citation_precision, doc_hit, normalize, number_match, numbers, page_hit, summarize, token_f1
 from finrag.eval.run import compare, evaluate, to_markdown
-from finrag.llm import ABSTAIN_TEXT, FakeLLM, OpenAICompatLLM, fold_system
+from finrag.llm import ABSTAIN_TEXT, FakeLLM, HFChatLLM, OpenAICompatLLM, fold_system, split_inputs
 
 GOLD = [
     {"id": "q1", "question": "What was ACME's capital expenditure in FY2022?", "answer": "$1577.00", "doc_ids": ["ACME_2022_10K"],
@@ -160,3 +163,62 @@ def test_fold_system_and_config(tmp_path):
     y.write_text("nope: 1\n", encoding="utf-8")
     with pytest.raises(ValueError):
         Config.load(y)
+
+
+class _T:
+    """Minimal stand-in for a torch tensor: .to(), .shape and slicing."""
+
+    def __init__(self, a):
+        self.a = np.array(a)
+
+    def to(self, device):
+        return self
+
+    @property
+    def shape(self):
+        return self.a.shape
+
+    def __getitem__(self, key):
+        return self.a[key]
+
+
+@pytest.mark.parametrize("returns_dict", [True, False])
+def test_hf_chat_handles_dict_and_tensor_from_chat_template(returns_dict):
+    seen = {}
+
+    class Tok:
+        eos_token_id = 0
+
+        def apply_chat_template(self, messages, **kw):
+            seen["kw"] = kw
+            ids = _T([[5, 6, 7]])
+            return {"input_ids": ids, "attention_mask": _T([[1, 1, 1]])} if returns_dict else ids
+
+        def decode(self, tokens, skip_special_tokens=True):
+            return " " + " ".join(str(int(x)) for x in tokens) + " "
+
+    class Model:
+        device = "cpu"
+
+        def generate(self, input_ids, attention_mask, **gen):
+            seen["mask"], seen["gen"] = attention_mask, gen
+            return np.array([[5, 6, 7, 42, 43]])
+
+    class Torch:
+        no_grad = staticmethod(contextlib.nullcontext)
+
+        @staticmethod
+        def ones_like(x):
+            return _T(np.ones(x.shape))
+
+    llm = HFChatLLM.__new__(HFChatLLM)  # skip __init__: no torch, no download
+    llm.tokenizer, llm.model, llm._torch = Tok(), Model(), Torch()
+    assert llm.chat([{"role": "user", "content": "hi"}], max_new_tokens=7) == "42 43"  # only the new tokens
+    assert seen["kw"]["return_dict"] is True and seen["gen"]["max_new_tokens"] == 7
+    assert seen["mask"].shape == (1, 3)
+
+
+def test_split_inputs():
+    ids, mask = split_inputs({"input_ids": 1, "attention_mask": 2})
+    assert (ids, mask) == (1, 2)
+    assert split_inputs("tensor") == ("tensor", None)

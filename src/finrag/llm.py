@@ -56,6 +56,13 @@ def fold_system(messages: list[Message]) -> list[Message]:
     return rest
 
 
+def split_inputs(encoded):
+    """apply_chat_template returns a dict (input_ids, attention_mask) in recent transformers and a bare tensor in old ones."""
+    if hasattr(encoded, "keys") and "input_ids" in encoded:
+        return encoded["input_ids"], encoded.get("attention_mask")
+    return encoded, None
+
+
 class HFChatLLM:
     """Local Hugging Face causal LM, 4-bit quantised when a GPU is available (fits a free Colab T4)."""
 
@@ -74,16 +81,19 @@ class HFChatLLM:
         self.model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
 
     def chat(self, messages: list[Message], max_new_tokens: int = 400, temperature: float = 0.0) -> str:
+        kwargs = {"add_generation_prompt": True, "return_tensors": "pt", "return_dict": True}
         try:
-            ids = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt")
-        except Exception:
-            ids = self.tokenizer.apply_chat_template(fold_system(messages), add_generation_prompt=True, return_tensors="pt")
+            encoded = self.tokenizer.apply_chat_template(messages, **kwargs)
+        except Exception:  # chat templates that reject the system role
+            encoded = self.tokenizer.apply_chat_template(fold_system(messages), **kwargs)
+        ids, mask = split_inputs(encoded)
         ids = ids.to(self.model.device)
+        mask = self._torch.ones_like(ids) if mask is None else mask.to(self.model.device)
         gen: dict = {"max_new_tokens": max_new_tokens, "do_sample": temperature > 0, "pad_token_id": self.tokenizer.eos_token_id}
         if temperature > 0:
             gen["temperature"] = temperature
         with self._torch.no_grad():
-            out = self.model.generate(ids, **gen)
+            out = self.model.generate(input_ids=ids, attention_mask=mask, **gen)
         return self.tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip()
 
 

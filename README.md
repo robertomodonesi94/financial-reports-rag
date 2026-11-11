@@ -57,7 +57,7 @@ The default model is a 7B instruct model loaded in 4 bit (it fits a free Colab T
 
 ```bash
 pip install -e ".[api,dev]"
-pytest                      # 44 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
+pytest                      # 47 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
 ```
 
 Set `embedder: hashing` and `llm_backend: fake` to exercise the whole pipeline offline.
