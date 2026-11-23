@@ -30,7 +30,8 @@ def token_f1(pred: str, gold: str) -> float:
 def numbers(text: str) -> list[float]:
     """Numbers in a text: '$1,577.00' -> 1577.0, '(12.5)' -> -12.5, '8.7%' -> 8.7. Bare years (1990-2035) are skipped."""
     out = []
-    for m in _NUMBER.finditer(text.replace("−", "-")):
+    text = re.sub(r"\[\d+\]", " ", text.replace("−", "-"))  # citation markers like [1] are not figures
+    for m in _NUMBER.finditer(text):
         paren, minus, dollar, integer, decimals, close, pct = m.groups()
         value = float(integer.replace(",", "") + (decimals or ""))
         if not (dollar or decimals or pct or "," in integer) and 1990 <= value <= 2035:
@@ -43,12 +44,13 @@ def numbers(text: str) -> list[float]:
 
 def number_match(pred: str, gold: str, rel_tol: float = 0.01) -> bool | None:
     """True when the answer contains the gold answer's first number, within rel_tol.
-    Lenient on scale: x100 (ratio vs percent) and x1000 (million vs billion) also match. None if the gold has no number."""
+    Lenient on scale: x100 (ratio vs percent) and x1000 (million vs billion) also match. None if the gold has no number.
+    Sign-insensitive: cash-flow statements print outflows in parentheses, e.g. capex "(4,625)" for a gold "$4.60" billion."""
     golds = numbers(gold)
     if not golds:
         return None
-    g = golds[0]
-    for p in numbers(pred):
+    g = abs(golds[0])
+    for p in (abs(x) for x in numbers(pred)):
         for scale in (1, 100, 0.01, 1000, 0.001):
             target = g * scale
             if abs(p - target) <= rel_tol * max(abs(target), 1e-9) or (target == 0 and abs(p) < 1e-9):

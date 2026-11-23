@@ -33,6 +33,10 @@ def test_numbers_and_number_match():
     assert number_match("a ratio of 0.224", "22.4%") is True              # ratio vs percent
     assert number_match("22%", "22.4%") is False
     assert number_match("anything", "Yes, it improved.") is None
+    # real case from Colab: capex shown as an outflow in parentheses, in millions; gold in billions
+    assert number_match("the capital spending for FY2021 is (4,625) million USD [1].", "$4.60") is True
+    assert numbers("revenue grew [2] to $5 [13]") == [5.0]  # citation markers are not figures
+    assert number_match("see source [1]", "1.0") is False
 
 
 def test_metrics():
