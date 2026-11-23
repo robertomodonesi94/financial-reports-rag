@@ -18,7 +18,8 @@ Questions need information extraction from long PDFs, tables and numerical reaso
 |---|---|
 | `financebench.py` | Downloads the FinanceBench questions, the document list and the PDFs; page-level text extraction (PyMuPDF) |
 | `chunking.py`, `index.py` | Word windows **inside each page** (every chunk keeps its page number); sentence-transformers embeddings or a dependency-free hashing baseline; exact cosine index |
-| `retrieve.py` | Dense search, BM25 and reciprocal rank fusion (hybrid); optional restriction to some documents |
+| `retrieve.py` | Dense search, BM25 and reciprocal rank fusion (hybrid); optional restriction to some documents; fusion of several query phrasings |
+| `query.py` | Query-side fixes: filing-vocabulary glossary, LLM query rewrite, company/fiscal-year report filter |
 | `rag.py` | Prompt with numbered sources (report + page), citation parsing and validation, abstention detection |
 | `agent.py`, `tools.py` | Agent that emits one JSON action per turn: `list_documents`, `search_corpus`, `get_document_info`, `calculate` (safe arithmetic) |
 | `llm.py` | One interface, three backends: local Hugging Face model in 4-bit, any OpenAI-compatible server, scripted fake for tests |
@@ -57,7 +58,7 @@ The default model is a 7B instruct model loaded in 4 bit (it fits a free Colab T
 
 ```bash
 pip install -e ".[api,dev]"
-pytest                      # 47 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
+pytest                      # 56 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
 ```
 
 Set `embedder: hashing` and `llm_backend: fake` to exercise the whole pipeline offline.
@@ -77,12 +78,16 @@ The gold set is a JSONL file (`eval/dataset.py` documents the format):
 `eval-generate` drafts extra questions from random chunks: **every draft must be reviewed and corrected by hand** (`reviewed: true`).
 
 ```bash
+python -m finrag eval --mode retrieval                 # search only, all questions, every variant: fast
 python -m finrag eval --limit 40                       # 40 answerable questions at random (fixed seed) + all unanswerable
 python -m finrag eval --mode agent --limit 20 --variant "hybrid, per_doc"
 ```
 
-Variants: `dense, shared` · `hybrid, shared` · `hybrid, per_doc`. *Shared* searches all reports at once (a company-wide assistant);
-*per_doc* searches only the report the question is about (FinanceBench's single-document setting).
+Variants change one thing at a time, so each change can be measured against `hybrid, shared`:
+`k=10` (10 chunks instead of 5), `glossary` (adds filing line-item names), `llm rewrite` (the model rewrites the question),
+`auto filter` (only the reports of the company and fiscal years named in the question), and all of them together.
+*Shared* searches all reports at once (a company-wide assistant); *per_doc* is handed the right report (FinanceBench's single-document
+setting) and is an upper bound, not something available in real use.
 
 Metrics (cheap and transparent; read the answers too):
 
@@ -127,6 +132,9 @@ If the index was built with a sentence-transformers model, build the image with 
 - **Page-aware chunks.** Chunks never cross a page, so retrieval can be scored against the evidence page and every answer points to a page a human can open.
 - **Hybrid retrieval.** Line items, tickers and figures ("capital expenditure", "PP&E", "1,577") are matched lexically; embeddings alone often miss them. Fusion is rank based, so scores of different scales need no calibration.
 - **Shared vs per-document search.** Searching one report is easier; a company-wide assistant must first find the right report. Both are measured.
+- **Vocabulary mismatch is the first failure found.** Questions say "capital expenditure", cash-flow statements print "purchases of property, plant and equipment" or "capital spending". A small glossary and an optional LLM rewrite add those phrasings; rankings are fused.
+- **Find the report before the page.** In shared search, chunks from the wrong company or year crowd out the right ones. `auto filter` reads the company (with aliases such as AMEX, JPM) and fiscal years from the question and falls back to all reports when unsure.
+- **Retrieval is evaluated on its own.** `--mode retrieval` needs no generation, so all variants run on all questions in minutes.
 - **Citations are checked, not trusted.** The model cites `[n]`; the code maps each `n` back to a report and page and flags numbers that do not exist. The agent's cited ids are compared with the ids it actually saw in tool results.
 - **Abstention is a measured behaviour.** A system that never says "I don't know" looks good on answerable questions and is dangerous in finance, so the harness scores it separately.
 - **Safe calculator.** Ratios and growth rates go through an AST whitelist, never `eval`; the model is told not to do arithmetic in its head.

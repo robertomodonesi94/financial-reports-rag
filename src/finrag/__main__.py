@@ -12,9 +12,18 @@ from .eval.run import compare, to_markdown
 from .pipeline import fetch, ingest, load_pipeline
 
 VARIANTS = {
-    "dense, shared": {"hybrid": False, "scope": "shared"},
-    "hybrid, shared": {"hybrid": True, "scope": "shared"},
-    "hybrid, per_doc": {"hybrid": True, "scope": "per_doc"},
+    # baseline and single changes (compare each one with "hybrid, shared")
+    "dense, shared": {"hybrid": False},
+    "hybrid, shared": {"hybrid": True},
+    "hybrid, shared, k=10": {"top_k": 10},
+    "hybrid, shared, glossary": {"query_rewrite": "glossary"},
+    "hybrid, shared, llm rewrite": {"query_rewrite": "llm"},
+    "hybrid, auto filter": {"auto_filter": True},
+    # everything together
+    "hybrid, auto filter, glossary, k=10": {"auto_filter": True, "query_rewrite": "glossary", "top_k": 10},
+    # upper bound: the right report is given (not available in real use)
+    "hybrid, per_doc": {"scope": "per_doc"},
+    "hybrid, per_doc, glossary, k=10": {"scope": "per_doc", "query_rewrite": "glossary", "top_k": 10},
 }
 
 
@@ -42,7 +51,8 @@ def main(argv: list[str] | None = None) -> None:
 
     e = sub.add_parser("eval", help="evaluate variants on the gold dataset")
     e.add_argument("--dataset", default="data/eval/gold.jsonl")
-    e.add_argument("--mode", choices=["rag", "agent"], default="rag")
+    e.add_argument("--mode", choices=["retrieval", "rag", "agent"], default="rag",
+                   help="retrieval = score only the search, no answers generated (fast)")
     e.add_argument("--limit", type=int, default=0, help="N answerable questions at random (fixed seed) + all unanswerable; 0 = all")
     e.add_argument("--variant", action="append", choices=list(VARIANTS), help="default: all variants")
     e.add_argument("--out", default="data/eval/results.json")

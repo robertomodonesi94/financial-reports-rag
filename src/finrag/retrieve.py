@@ -83,3 +83,17 @@ class Retriever:
             ranks.setdefault(i, {})["bm25"] = r + 1
         best = sorted(fused, key=lambda i: -fused[i])[:k]
         return [Hit(self.index.chunks[i], fused[i], ranks[i].get("dense"), ranks[i].get("bm25")) for i in best]
+
+    def search_multi(self, queries: list[str], k: int = 5, doc_ids: list[str] | None = None) -> list[Hit]:
+        """Search with several phrasings of the same question and fuse the rankings (reciprocal rank fusion)."""
+        queries = [q for q in dict.fromkeys(queries) if q and q.strip()]
+        if len(queries) <= 1:
+            return self.search(queries[0] if queries else "", k, doc_ids=doc_ids)
+        fused: dict[str, float] = {}
+        best: dict[str, Hit] = {}
+        for q in queries:
+            for r, h in enumerate(self.search(q, max(k, self.pool), doc_ids=doc_ids)):
+                fused[h.chunk.id] = fused.get(h.chunk.id, 0.0) + 1.0 / (self.rrf_k + r + 1)
+                best.setdefault(h.chunk.id, h)
+        top = sorted(fused, key=lambda cid: -fused[cid])[:k]
+        return [Hit(best[cid].chunk, fused[cid], best[cid].dense_rank, best[cid].bm25_rank) for cid in top]

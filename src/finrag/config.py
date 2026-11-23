@@ -19,6 +19,8 @@ class Config:
     embedder: str = "sentence-transformers/all-MiniLM-L6-v2"  # "hashing" = no-download lexical baseline
     top_k: int = 5
     hybrid: bool = True
+    query_rewrite: str = "none"   # none | glossary | llm: extra search phrasings in filing vocabulary
+    auto_filter: bool = False     # search only the reports of the company/years named in the question
     # generation
     llm_backend: str = "hf"  # hf | openai_compat | fake
     llm_model: str = "mistralai/Mistral-7B-Instruct-v0.3"  # or Qwen/Qwen2.5-7B-Instruct (check the licence)
