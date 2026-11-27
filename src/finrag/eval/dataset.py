@@ -50,6 +50,15 @@ def sample(rows: list[dict], n: int, seed: int = 0) -> list[dict]:
     return ans[:n] + una
 
 
+def split_dev_test(rows: list[dict], n_dev: int = 40, seed: int = 0) -> tuple[list[dict], list[dict]]:
+    """Development set = the first n_dev answerable questions of sample(rows, n_dev, seed), i.e. the questions already read
+    while building the system (block 3 used the first 10 of them). Test set = every other question, unanswerable ones included.
+    Tune on dev, report on test: tuning and measuring on the same questions inflates the results."""
+    dev = [r for r in sample(rows, n_dev, seed) if r["type"] != "unanswerable"][:n_dev]
+    dev_ids = {r["id"] for r in dev}
+    return dev, [r for r in rows if r["id"] not in dev_ids]
+
+
 def save_jsonl(rows: list[dict], path: str | Path) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with Path(path).open("w", encoding="utf-8") as f:

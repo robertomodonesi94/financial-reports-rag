@@ -37,6 +37,14 @@ GLOSSARY: list[tuple[str, str]] = [
     (r"\bbalance sheet\b", "consolidated balance sheet total assets total liabilities"),
     (r"\bbook value\b|\bliquidat\w*\b", "total shareholders equity book value per share common shares outstanding"),
     (r"\bspin(?:ning)?[\s-]?off\b|\bseparation\b|\bdivest\w*", "separation spin-off discontinued operations divestiture"),
+    # added after the error analysis on the development questions (2026-11-27)
+    (r"\bfixed asset turnover\b|\bpp&?e\b|\bppne\b|\bfixed assets\b", "property, plant and equipment, net total revenues"),
+    (r"\bcagr\b|\bgrowth rate\b", "total revenues net sales"),
+    (r"\bnet ar\b|\baccounts receivable\b|\breceivables\b", "accounts receivable, net trade receivables"),
+    (r"\bdebt\b|\bborrowings\b|\bleverage\b", "long-term debt short-term borrowings current portion of long-term debt"),
+    (r"\binventor(?:y|ies)\b", "inventories cost of sales"),
+    (r"\bstores?\b", "number of stores store count"),
+    (r"\bnet income\b|\bnet earnings\b|\bnet profit\b", "net income net earnings attributable"),
 ]
 _GLOSSARY_RE = [(re.compile(p, re.I), terms) for p, terms in GLOSSARY]
 

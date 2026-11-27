@@ -58,7 +58,7 @@ The default model is a 7B instruct model loaded in 4 bit (it fits a free Colab T
 
 ```bash
 pip install -e ".[api,dev]"
-pytest                      # 56 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
+pytest                      # 58 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
 ```
 
 Set `embedder: hashing` and `llm_backend: fake` to exercise the whole pipeline offline.
@@ -82,6 +82,8 @@ python -m finrag eval --mode retrieval                 # search only, all questi
 python -m finrag eval --limit 40                       # 40 answerable questions at random (fixed seed) + all unanswerable
 python -m finrag eval --mode agent --limit 20 --variant "hybrid, per_doc"
 ```
+
+**Development and test questions.** The 40 questions read while building the system are the development set (`split_dev_test`); all choices, including the glossary, are made on them. The other questions are the test set, used once for the reported numbers: tuning and measuring on the same questions would inflate the results.
 
 Variants change one thing at a time, so each change can be measured against `hybrid, shared`:
 `k=10` (10 chunks instead of 5), `glossary` (adds filing line-item names), `llm rewrite` (the model rewrites the question),

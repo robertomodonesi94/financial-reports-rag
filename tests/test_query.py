@@ -96,3 +96,19 @@ def test_retrieval_only_evaluation(pipeline):
     assert res["all"]["summary"]["page_hit"] == 1.0
     table = to_markdown(res)
     assert "filter_correct" in table and "| auto |" in table and "number_match" not in table
+
+
+def test_glossary_covers_ratio_questions_from_the_error_analysis():
+    assert "property, plant and equipment, net" in expand_glossary("What is the FY2018 fixed asset turnover ratio for CVS Health?")
+    assert "accounts receivable" in expand_glossary("What is Amcor's year end FY2020 net AR?")
+    assert "inventories" in expand_glossary("What is Kraft Heinz's FY2019 inventory turnover ratio?")
+    assert "long-term debt" in expand_glossary("Has Microsoft increased its debt on balance sheet?")
+
+
+def test_split_dev_test_is_disjoint_and_keeps_block3_questions_in_dev():
+    from finrag.eval.dataset import sample, split_dev_test
+    rows = [{"id": f"q{i}", "type": "factual"} for i in range(150)] + [{"id": "u1", "type": "unanswerable"}]
+    dev, test = split_dev_test(rows, n_dev=40)
+    assert len(dev) == 40 and len(test) == 111 and not {r["id"] for r in dev} & {r["id"] for r in test}
+    assert {r["id"] for r in sample(rows, 10, seed=0) if r["type"] != "unanswerable"} <= {r["id"] for r in dev}
+    assert any(r["type"] == "unanswerable" for r in test)
