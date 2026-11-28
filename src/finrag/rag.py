@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 from .llm import ABSTAIN_TEXT, LLM
 from .query import expand_glossary, guess_docs, rewrite_with_llm
@@ -37,6 +37,23 @@ def format_context(hits: list[Hit]) -> str:
     return "\n\n".join(f"[{i}] {h.chunk.title}, page {h.chunk.page + 1} ({h.chunk.doc_id})\n{h.chunk.text}" for i, h in enumerate(hits, 1))
 
 
+def fit_context(hits: list[Hit], max_chars: int, min_chars: int = 300) -> list[Hit]:
+    """Keep the best-ranked chunks within a character budget; the last one is cut, the rest dropped.
+    Long prompts run out of GPU memory on a T4 (tables are expensive: every digit is a token)."""
+    if max_chars <= 0:
+        return hits
+    out, used = [], 0
+    for h in hits:
+        room = max_chars - used
+        if room < min_chars:
+            break
+        if len(h.chunk.text) > room:
+            h = Hit(replace(h.chunk, text=h.chunk.text[:room]), h.score, h.dense_rank, h.bm25_rank)
+        out.append(h)
+        used += len(h.chunk.text)
+    return out
+
+
 @dataclass
 class Answer:
     question: str
@@ -68,12 +85,14 @@ class RAGPipeline:
     auto_filter: when no report is given, search only the reports of the company and years named in the question."""
 
     def __init__(self, retriever: Retriever, llm: LLM, top_k: int = 5, max_new_tokens: int = 400, temperature: float = 0.0,
-                 query_rewrite: str = "none", auto_filter: bool = False, docs: dict[str, dict] | None = None):
+                 query_rewrite: str = "none", auto_filter: bool = False, docs: dict[str, dict] | None = None,
+                 max_context_chars: int = 10000):
         if query_rewrite not in REWRITE_MODES:
             raise ValueError(f"query_rewrite must be one of {sorted(REWRITE_MODES)}, got '{query_rewrite}'")
         self.retriever, self.llm = retriever, llm
         self.top_k, self.max_new_tokens, self.temperature = top_k, max_new_tokens, temperature
         self.query_rewrite, self.auto_filter, self.docs = query_rewrite, auto_filter, docs or {}
+        self.max_context_chars = max_context_chars
 
     def retrieve(self, question: str, doc_ids: list[str] | None = None) -> tuple[list[Hit], dict]:
         """The chunks the answer will be based on, plus how they were searched (queries, report filter)."""
@@ -96,6 +115,7 @@ class RAGPipeline:
     def ask(self, question: str, doc_ids: list[str] | None = None) -> Answer:
         """doc_ids limits the search to the given reports (the 'single document' setting of FinanceBench)."""
         hits, info = self.retrieve(question, doc_ids)
+        hits = fit_context(hits, self.max_context_chars)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Sources:\n{format_context(hits)}\n\nQuestion: {question}"},

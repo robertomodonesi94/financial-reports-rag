@@ -63,6 +63,16 @@ def split_inputs(encoded):
     return encoded, None
 
 
+class GPUMemoryError(RuntimeError):
+    """The prompt did not fit in GPU memory."""
+
+
+def _free_gpu(torch) -> None:
+    cuda = getattr(torch, "cuda", None)
+    if cuda is not None and cuda.is_available():
+        cuda.empty_cache()
+
+
 class HFChatLLM:
     """Local Hugging Face causal LM, 4-bit quantised when a GPU is available (fits a free Colab T4)."""
 
@@ -92,9 +102,17 @@ class HFChatLLM:
         gen: dict = {"max_new_tokens": max_new_tokens, "do_sample": temperature > 0, "pad_token_id": self.tokenizer.eos_token_id}
         if temperature > 0:
             gen["temperature"] = temperature
-        with self._torch.no_grad():
-            out = self.model.generate(input_ids=ids, attention_mask=mask, **gen)
-        return self.tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip()
+        try:
+            with self._torch.no_grad():
+                out = self.model.generate(input_ids=ids, attention_mask=mask, **gen)
+            return self.tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip()
+        except Exception as e:
+            if "OutOfMemory" in type(e).__name__:
+                raise GPUMemoryError(f"out of GPU memory with a prompt of {ids.shape[1]} tokens; lower top_k or max_context_chars") from e
+            raise
+        finally:
+            out = None
+            _free_gpu(self._torch)
 
 
 def get_llm(cfg: Config) -> LLM:

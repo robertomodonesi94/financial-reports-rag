@@ -226,3 +226,80 @@ def test_split_inputs():
     ids, mask = split_inputs({"input_ids": 1, "attention_mask": 2})
     assert (ids, mask) == (1, 2)
     assert split_inputs("tensor") == ("tensor", None)
+
+
+def test_fit_context_keeps_best_chunks_within_budget(retriever):
+    from finrag.rag import fit_context
+    hits = retriever.search("capital expenditure revenue margin", k=6)
+    total = sum(len(h.chunk.text) for h in hits)
+    kept = fit_context(hits, max_chars=total // 2, min_chars=10)
+    assert 0 < len(kept) < len(hits) and sum(len(h.chunk.text) for h in kept) <= total // 2
+    assert [h.chunk.id for h in kept] == [h.chunk.id for h in hits[:len(kept)]]   # rank order is kept
+    assert fit_context(hits, 0) == hits and fit_context(hits, 10**6) == hits
+    assert hits[0].chunk.text and kept[0].chunk is hits[0].chunk                  # originals are not modified
+
+
+def test_rag_prompt_respects_context_budget(retriever):
+    from finrag.rag import RAGPipeline
+    llm = FakeLLM(fn=lambda m: "x [1]")
+    ans = RAGPipeline(retriever, llm, top_k=6, max_context_chars=400).ask("capital expenditure")
+    assert len(ans.sources) < 6
+    assert len(llm.calls[0][1]["content"]) < 400 + 1500   # sources + headers + question
+
+
+def test_evaluation_survives_a_failing_question(pipeline):
+    calls = {"n": 0}
+
+    def flaky(messages):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("out of GPU memory with a prompt of 9000 tokens")
+        return answer_from_context(messages)
+
+    pipeline.llm = FakeLLM(fn=flaky)
+    logs = []
+    res = evaluate(GOLD, pipeline, "rag", log=logs.append)
+    assert res["summary"]["errors"] == 1 and len(res["rows"]) == len(GOLD)
+    assert "out of GPU memory" in res["rows"][0]["error"] and res["rows"][0]["abstained"] is True
+    assert logs and logs[-1].strip().startswith(f"{len(GOLD)}/{len(GOLD)}")
+    table = to_markdown({"v": res})
+    assert "failed with an error" in table
+
+
+def test_hf_chat_turns_cuda_oom_into_a_clear_error():
+    from finrag.llm import GPUMemoryError
+
+    class OutOfMemoryError(RuntimeError):
+        pass
+
+    class Tok:
+        eos_token_id = 0
+
+        def apply_chat_template(self, messages, **kw):
+            return {"input_ids": _T([[1] * 9000]), "attention_mask": _T([[1] * 9000])}
+
+    class Model:
+        device = "cpu"
+
+        def generate(self, **kw):
+            raise OutOfMemoryError("CUDA out of memory")
+
+    freed = []
+
+    class Torch:
+        no_grad = staticmethod(contextlib.nullcontext)
+
+        class cuda:
+            @staticmethod
+            def is_available():
+                return True
+
+            @staticmethod
+            def empty_cache():
+                freed.append(1)
+
+    llm = HFChatLLM.__new__(HFChatLLM)
+    llm.tokenizer, llm.model, llm._torch = Tok(), Model(), Torch()
+    with pytest.raises(GPUMemoryError, match="9000 tokens"):
+        llm.chat([{"role": "user", "content": "hi"}])
+    assert freed   # GPU cache emptied even on failure

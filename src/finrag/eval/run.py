@@ -70,23 +70,36 @@ def run_agent(ex: dict, agent, scope: str = "shared") -> dict:
     return row
 
 
-def evaluate(examples: list[dict], pipeline: Pipeline, mode: str = "rag", scope: str = "shared", **overrides) -> dict:
+def evaluate(examples: list[dict], pipeline: Pipeline, mode: str = "rag", scope: str = "shared", log=None, **overrides) -> dict:
     if mode == "retrieval":
         rag = pipeline.rag(**overrides)
         rows = [run_retrieval(ex, rag, scope) for ex in examples if ex["type"] != "unanswerable"]
         return {"summary": summarize_retrieval(rows), "rows": rows}
     runner, system = (run_rag, pipeline.rag(**overrides)) if mode == "rag" else (run_agent, pipeline.agent(**overrides))
-    rows = [runner(ex, system, scope) for ex in examples]
-    return {"summary": summarize(rows), "rows": rows}
+    rows = []
+    for n, ex in enumerate(examples, 1):
+        try:
+            rows.append(runner(ex, system, scope))
+        except Exception as e:  # e.g. out of GPU memory: record it as a failed answer and go on
+            row = _score_common(ex, "", True)
+            row["error"] = f"{type(e).__name__}: {e}"[:300]
+            rows.append(row)
+        if log and (n % 10 == 0 or n == len(examples)):
+            log(f"  {n}/{len(examples)} questions")
+    summary = summarize(rows)
+    summary["errors"] = sum(1 for r in rows if r.get("error"))
+    return {"summary": summary, "rows": rows}
 
 
-def compare(examples: list[dict], pipeline: Pipeline, variants: dict[str, dict], mode: str = "rag") -> dict[str, dict]:
+def compare(examples: list[dict], pipeline: Pipeline, variants: dict[str, dict], mode: str = "rag", log=print) -> dict[str, dict]:
     """variants: name -> overrides; the special key 'scope' selects shared or per_doc search."""
     out = {}
     for name, overrides in variants.items():
         overrides = dict(overrides)
         scope = overrides.pop("scope", "shared")
-        out[name] = evaluate(examples, pipeline, mode, scope, **overrides)
+        if log and mode != "retrieval":
+            log(f"{name}:")
+        out[name] = evaluate(examples, pipeline, mode, scope, log=log if mode != "retrieval" else None, **overrides)
     return out
 
 
@@ -104,4 +117,7 @@ def to_markdown(results: dict[str, dict]) -> str:
         lines.append(f"| {name} | " + " | ".join("-" if s[c] is None else f"{s[c]:.2f}" for c in cols) + " |")
     first = next(iter(results.values()))["summary"]
     lines.append(f"\n{first['n_answerable']} answerable and {first['n_unanswerable']} unanswerable questions.")
+    errors = {name: res["summary"].get("errors") for name, res in results.items() if res["summary"].get("errors")}
+    if errors:
+        lines.append("Questions that failed with an error (counted as not answered): " + ", ".join(f"{k} {v}" for k, v in errors.items()))
     return "\n".join(lines)

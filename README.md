@@ -58,7 +58,7 @@ The default model is a 7B instruct model loaded in 4 bit (it fits a free Colab T
 
 ```bash
 pip install -e ".[api,dev]"
-pytest                      # 58 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
+pytest                      # 62 tests: retrieval, page-aware chunking, citations, agent loop, metrics, API (fake LLM, hashing embedder)
 ```
 
 Set `embedder: hashing` and `llm_backend: fake` to exercise the whole pipeline offline.
@@ -144,6 +144,7 @@ If the index was built with a sentence-transformers model, build the image with 
 
 ## Limitations
 
+- A free T4 has ~15 GB: the sources given to the model are capped (`max_context_chars`, ~3-4k tokens); with k=10 the lowest-ranked chunks may be cut.
 - PDF text extraction flattens tables: row labels and figures lose their alignment, so table questions are the hardest.
 - Exact cosine search over tens of thousands of chunks; a vector database is not needed at this scale.
 - `number_match` checks only the first figure of the gold answer; `f1` under-scores paraphrases. Read the answers.

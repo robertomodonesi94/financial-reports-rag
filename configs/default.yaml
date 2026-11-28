@@ -12,6 +12,7 @@ hybrid: true
 llm_backend: hf                                    # hf | openai_compat | fake
 llm_model: mistralai/Mistral-7B-Instruct-v0.3      # or Qwen/Qwen2.5-7B-Instruct (check the licence)
 max_new_tokens: 400
+max_context_chars: 10000                           # sources given to the model (~3-4k tokens, fits a T4)
 temperature: 0.0
 
 agent_max_steps: 5

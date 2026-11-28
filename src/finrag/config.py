@@ -26,6 +26,7 @@ class Config:
     llm_model: str = "mistralai/Mistral-7B-Instruct-v0.3"  # or Qwen/Qwen2.5-7B-Instruct (check the licence)
     llm_base_url: str = "http://localhost:8000/v1"
     max_new_tokens: int = 400
+    max_context_chars: int = 10000  # text of the sources given to the model (~3-4k tokens: fits a T4 with a 7B model in 4 bit)
     temperature: float = 0.0
     # agent
     agent_max_steps: int = 5

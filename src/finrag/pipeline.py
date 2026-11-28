@@ -86,7 +86,8 @@ class Pipeline:
     def rag(self, **overrides) -> RAGPipeline:
         cfg = replace(self.cfg, **overrides) if overrides else self.cfg
         return RAGPipeline(self.retriever(**overrides), self.llm, cfg.top_k, cfg.max_new_tokens, cfg.temperature,
-                           query_rewrite=cfg.query_rewrite, auto_filter=cfg.auto_filter, docs=self.docs)
+                           query_rewrite=cfg.query_rewrite, auto_filter=cfg.auto_filter, docs=self.docs,
+                           max_context_chars=cfg.max_context_chars)
 
     def agent(self, **overrides) -> Agent:
         cfg = replace(self.cfg, **overrides) if overrides else self.cfg
